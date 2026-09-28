@@ -1,0 +1,13 @@
+# Python do projeto: pipeline e regras (oclusao_py/) + testes (tests/python/).
+# Versões testadas com Python 3.12 e 3.14.
+#
+#   uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r requirements.txt
+#   (ou: python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt)
+#
+# O servidor opcional com PyTorch (server/) tem dependências próprias: server/requirements.txt
+
+mediapipe==1.0.1      # FaceLandmarker (landmarks + piscada) e ImageSegmenter
+onnxruntime==1.30.0   # classificador de óculos (models/oculos.onnx)
+numpy==2.5.2
+pillow==12.3.0        # leitura de imagem e recorte do rosto
+pytest==9.1.1         # testes: python -m pytest tests/python

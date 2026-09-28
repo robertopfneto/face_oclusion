@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f0e">
+<title>Oclusão Facial</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --ground: #0b0f0e;
+    --ink: #eef3f1;
+    --ink-dim: #9fb1ab;
+    --ok: #3ddc97;
+    --bad: #ff4d5e;
+    --null: #8a9a95;
+    --glass: rgba(11, 15, 14, 0.55);
+    --line: rgba(238, 243, 241, 0.16);
+    --ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Roboto Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font: 500 14px/1.4 var(--ui);
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  [hidden] { display: none !important; }
+
+  .stage { position: fixed; inset: 0; display: grid; place-items: center; }
+  #canvas { max-width: 100%; max-height: 100%; display: block; }
+
+  .empty { text-align: center; padding-inline: 24px; }
+  .empty h1 { margin: 0; font-size: 20px; font-weight: 700; text-wrap: balance; }
+  .empty p { max-width: 34ch; margin: 10px auto 0; color: var(--ink-dim); text-wrap: balance; }
+  .empty .err { color: var(--bad); font: 400 12px/1.4 var(--mono); word-break: break-word; }
+  .face-guide {
+    width: 120px; height: 150px; margin: 0 auto 20px;
+    border: 2px dashed var(--line); border-radius: 50% / 45%;
+  }
+  .spinner {
+    width: 28px; height: 28px; margin: 0 auto 16px;
+    border: 3px solid var(--line); border-top-color: var(--ok);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* painel de resultado: ao lado no desktop, no topo (recolhível) no celular */
+  .panel {
+    position: fixed; z-index: 2;
+    top: calc(env(safe-area-inset-top, 0px) + 8px); left: 8px; right: 8px;
+    max-height: 52vh;
+    display: flex; flex-direction: column;
+    background: rgba(11, 15, 14, 0.78);
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    border: 1px solid var(--line); border-radius: 16px;
+    overflow: hidden;
+  }
+  .panel-head {
+    flex: none; width: 100%;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 10px 12px; min-height: 44px;
+    background: transparent; border: 0; border-radius: 0;
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  .panel-head:active { transform: none; }
+  .panel-sum { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chev { flex: none; width: 8px; height: 8px; border-right: 2px solid var(--ink-dim); border-bottom: 2px solid var(--ink-dim); transform: rotate(-135deg); margin: 4px 4px 0; transition: transform .15s; }
+  .panel.collapsed .chev { transform: rotate(45deg); margin-top: -4px; }
+  .panel.collapsed .panel-main { display: none; }
+  .panel-main { overflow-y: auto; padding: 0 12px 12px; border-top: 1px solid var(--line); }
+  .sec { margin: 12px 0 6px; font: 700 11px/1 var(--ui); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-dim); }
+  .row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 4px 8px; padding: 5px 0; }
+  .conf { font: 600 11px/1 var(--mono); font-variant-numeric: tabular-nums; }
+  .conf.alta  { color: var(--ink); }
+  .conf.media { color: #ffd479; }
+  .conf.baixa { color: var(--bad); }
+  .row .lbl { font-size: 13px; }
+  .row small { color: var(--ink-dim); font-size: 11px; }
+  .chip { font: 700 11px/1 var(--ui); padding: 5px 8px; border-radius: 999px; white-space: nowrap; }
+  .chip.on  { color: var(--bad);  background: rgba(255, 77, 94, 0.16); }
+  .chip.off { color: var(--ok);   background: rgba(61, 220, 151, 0.14); }
+  .chip.na  { color: var(--null); background: rgba(138, 154, 149, 0.16); }
+  .meter { grid-column: 1 / -1; position: relative; height: 4px; border-radius: 2px; background: var(--line); }
+  .meter i { position: absolute; inset: 0 auto 0 0; border-radius: 2px; background: var(--ok); opacity: .7; }
+  .meter.on i { background: var(--bad); opacity: 1; }
+  .meter b { position: absolute; top: -3px; width: 2px; height: 10px; margin-left: -1px; background: var(--ink); opacity: .6; }
+  .empty-row, .note { margin: 12px 0 0; color: var(--ink-dim); font-size: 13px; }
+  .raw { margin-top: 12px; }
+  .raw summary { cursor: pointer; font: 700 11px/1 var(--ui); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-dim); padding: 8px 0; }
+  .json {
+    margin: 4px 0 0;
+    font: 400 11px/1.45 var(--mono);
+    color: var(--ink);
+    white-space: pre;
+    overflow-x: auto;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    user-select: none;
+  }
+  .json .k { color: var(--ink-dim); }
+  .json .t { color: var(--bad); font-weight: 700; }
+  .json .f { color: var(--ok); font-weight: 700; }
+  .json .n { color: var(--null); }
+  .json .s { color: #ffd479; }
+  @media (min-width: 760px) {
+    .stage, .bottom { right: 336px; }
+    .panel { top: 16px; right: 16px; bottom: 16px; left: auto; width: 304px; max-height: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { .chev { transition: none; } }
+
+  .bottom {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    padding: 12px 16px calc(env(safe-area-inset-bottom, 0px) + 20px);
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+  }
+  .tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .tag {
+    font: 700 17px/1 var(--ui); color: #fff;
+    background: rgba(255, 77, 94, 0.88); border-radius: 999px;
+    padding: 10px 16px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+  }
+  .tag small { font: 600 12px/1 var(--mono); opacity: .85; }
+  .notice {
+    max-width: 40ch; margin: 0; text-align: center;
+    font-size: 13px; color: #ffd479;
+    text-shadow: 0 1px 2px #000;
+  }
+  .fps { margin: 0; font: 400 12px/1 var(--mono); color: var(--ink-dim); text-shadow: 0 1px 2px #000; font-variant-numeric: tabular-nums; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; }
+  button, .shot {
+    position: relative;
+    font: 700 15px/1 var(--ui);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    border-radius: 999px;
+    cursor: pointer;
+    padding: 14px 20px;
+    min-height: 44px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    transition: background .15s, border-color .15s, transform .1s;
+  }
+  button:active, .shot:active { transform: scale(.97); }
+  button:focus-visible, .shot:focus-within { outline: 2px solid var(--ok); outline-offset: 3px; }
+  button:disabled { opacity: .45; cursor: default; }
+  .shot { background: var(--ink); color: var(--ground); border-color: var(--ink); padding: 16px 26px; }
+  .shot input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  .shot.busy { opacity: .5; pointer-events: none; }
+  button.primary { background: var(--ok); color: var(--ground); border-color: var(--ok); }
+  #live[aria-pressed="true"] { border-color: var(--bad); color: var(--bad); }
+  #toggle .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ink-dim); }
+  #toggle[aria-pressed="true"] { border-color: var(--ok); }
+  #toggle[aria-pressed="true"] .dot { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+  select {
+    font: 500 14px/1 var(--ui); color: var(--ink);
+    background: var(--glass); border: 1px solid var(--line); border-radius: 999px;
+    padding: 12px 16px; min-height: 44px;
+  }
+  #rec:disabled { opacity: 1; border-color: var(--bad); color: var(--bad); }
+  #ref { font-size: 13px; font-weight: 500; color: var(--ink-dim); padding: 12px 16px; }
+  #ref.done { color: var(--ok); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spinner { animation: none; }
+    button, .shot { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <main class="stage">
+    <div class="empty" id="empty">
+      <div class="spinner" id="spinner"></div>
+      <div class="face-guide" id="guide" hidden></div>
+      <h1 id="emptyTitle">Carregando modelos</h1>
+      <p id="emptyText">Detector de rosto e segmentador do MediaPipe. Na primeira vez pode levar alguns segundos.</p>
+      <p class="err" id="emptyErr" hidden></p>
+    </div>
+    <canvas id="canvas" hidden></canvas>
+    <video id="video" playsinline muted hidden></video>
+  </main>
+
+  <aside class="panel" id="panel" hidden>
+    <button class="panel-head" id="panelHead" type="button" aria-expanded="true" aria-controls="panelMain" aria-label="Recolher ou expandir o painel">
+      <span class="panel-sum" id="panelSum"></span>
+      <span class="chev" aria-hidden="true"></span>
+    </button>
+    <div class="panel-main" id="panelMain">
+      <div id="panelBody"></div>
+      <details class="raw">
+        <summary>JSON</summary>
+        <pre class="json" id="json" title="Toque para alternar entre visão compacta e completa"></pre>
+      </details>
+    </div>
+  </aside>
+
+  <div class="bottom">
+    <div class="tags" id="tags" aria-live="polite" hidden></div>
+    <p class="notice" id="notice" hidden></p>
+    <p class="fps" id="fps" hidden></p>
+    <div class="bar" id="testBar" hidden>
+      <select id="cenario" aria-label="Cenário do teste">
+        <option value="sem_nada">sem nada</option>
+        <option value="chapeu_ou_bone">chapéu ou boné</option>
+        <option value="gorro_capuz">gorro / capuz</option>
+        <option value="oculos_grau">óculos de grau</option>
+        <option value="oculos_escuros">óculos escuros</option>
+        <option value="mascara">máscara</option>
+        <option value="mao_na_boca">mão na boca</option>
+        <option value="franja">franja / cabelo na testa</option>
+        <option value="olho_pequeno_semiaberto">olho pequeno / semiaberto</option>
+        <option value="olhos_fechados">olhos fechados</option>
+        <option value="um_olho_fechado">um olho fechado</option>
+      </select>
+      <button id="rec" type="button">Gravar 5 s</button>
+      <button id="dl" type="button" disabled>Baixar relatório</button>
+    </div>
+    <div class="bar">
+      <button id="live" type="button" aria-pressed="false" disabled>Ao vivo</button>
+      <button id="capture" class="primary" type="button" hidden>Capturar</button>
+      <label class="shot busy" id="shot">
+        <input id="file" type="file" accept="image/*" disabled>
+        Enviar foto
+      </label>
+      <button id="toggle" type="button" aria-pressed="true" disabled><span class="dot"></span>Landmarks</button>
+      <button id="ref" type="button" disabled title="Use uma foto com o rosto livre como referência">Usar como referência</button>
+    </div>
+  </div>
+
+<script>
+  // Se o módulo principal não subir, mostra o motivo em vez de ficar carregando para sempre.
+  (function () {
+    function show(title, text) {
+      document.getElementById("spinner").hidden = true;
+      document.getElementById("emptyTitle").textContent = title;
+      document.getElementById("emptyText").textContent = text;
+    }
+    if (location.protocol === "file:") {
+      show("Abra por um servidor", "Navegadores bloqueiam módulos e modelos em file://. Use GitHub Pages, Vercel ou npx serve.");
+      return;
+    }
+    window.addEventListener("error", function (e) {
+      if (window.__oclusao) return;
+      show("Não consegui iniciar o app", String(e.message || "Erro ao carregar os scripts."));
+    });
+    setTimeout(function () {
+      if (!window.__oclusao) show("O app não iniciou", "Verifique se as pastas vendor/ e models/ foram publicadas junto com o index.html.");
+    }, 20000);
+  })();
+</script>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

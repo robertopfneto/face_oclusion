@@ -1,0 +1,15 @@
+# Servidor opcional (FastAPI + PyTorch) e scripts de server/. Versões testadas com Python 3.12.
+# torch/torchvision só CPU vêm de outro índice; instale antes:
+#   uv pip install --python server/.venv/bin/python --index-url https://download.pytorch.org/whl/cpu torch==2.14.0 torchvision==0.29.0
+#   uv pip install --python server/.venv/bin/python -r server/requirements.txt
+
+-r ../requirements.txt     # pipeline Python (mediapipe, onnxruntime, ...)
+torch==2.14.0
+torchvision==0.29.0
+pyfacer==0.0.5             # FaRL: chapéu/boné (Wearing_Hat)
+transformers==5.17.0       # SigLIP: máscara
+glasses-detector==1.0.4    # óculos (oculos.py, export_onnx.py)
+onnx==1.23.0               # export_onnx.py
+fastapi==0.141.1
+uvicorn==0.54.0
+python-multipart==0.0.32
