@@ -401,4 +401,4 @@ Os testes ponta a ponta com navegador automático (`npm run test:e2e`) são lent
 | SigLIP Face-Mask-Detection (só no servidor)           | [prithivMLmods](https://huggingface.co/prithivMLmods/Face-Mask-Detection)                                           | Apache 2.0                        |
 
 
-Roberto Neto
+Roberto Neto w/ claude xd
